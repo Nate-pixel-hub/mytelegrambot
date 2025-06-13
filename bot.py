@@ -8,6 +8,7 @@ from telegram import ReplyKeyboardMarkup, KeyboardButton
 import asyncio 
 from telegram.ext import ConversationHandler, MessageHandler, filters
 import os 
+from aiohttp import web
 
 
 
@@ -289,24 +290,21 @@ async def feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please provide your feedback after the command. Example: /feedback I love this bot!")
 
 
-from aiohttp import web
-
 async def handle(request):
     return web.Response(text="I’m alive, baby!")
 
-app_web = web.Application()
-app_web.add_routes([web.get('/', handle)])
-
-def run_keep_alive():
+async def run_keep_alive():
+    app_web = web.Application()
+    app_web.add_routes([web.get('/', handle)])
     runner = web.AppRunner(app_web)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(runner.setup())
-    port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    loop.run_until_complete(site.start())
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
+    await site.start()
 
-# Call this before app.run_polling()
-run_keep_alive()
+async def main():
+    # Start keep-alive server for Render
+    asyncio.create_task(run_keep_alive())
+
 
 # Start the bot
 if __name__ == '__main__':
@@ -352,8 +350,7 @@ if __name__ == '__main__':
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_all))
     
-    # Call this before app.run_polling()
-    run_keep_alive() 
+  
     print("Bot is running...")
     
 
