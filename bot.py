@@ -7,6 +7,7 @@ from telegram.ext import CallbackQueryHandler
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 import asyncio 
 from telegram.ext import ConversationHandler, MessageHandler, filters
+import os 
 
 
 
@@ -300,7 +301,8 @@ def run_keep_alive():
     runner = web.AppRunner(app_web)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(runner.setup())
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
     loop.run_until_complete(site.start())
 
 # Call this before app.run_polling()
@@ -351,7 +353,7 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_all))
     
     # Call this before app.run_polling()
-    run_keep_alive()
+    run_keep_alive() 
     print("Bot is running...")
     
 
