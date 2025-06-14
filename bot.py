@@ -9,25 +9,56 @@ import asyncio
 from telegram.ext import ConversationHandler, MessageHandler, filters
 import os 
 from aiohttp import web
+import re
+from datetime import datetime, timedelta
 
 
 
 ASKING_NAME = 1
 GUESSING = 2
 scoreboard = {}
+reminder_list = []
 
 
 
 
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = context.user_data.get('name', 'Nathan')
-    await update.message.reply_text(f"👋 Hello {name}! I'm alive and listening.")
-
+    user_first = update.effective_user.first_name
+    await update.message.reply_text(f"Hello {user_first} 👋, I'm alive and listening...")
 
 # /help command
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Here are some commands you can try:\n/start\n/help\n/about\n/joke")
+    help_text = (
+        "🛠️ *Available Commands:*\n"
+        "/start – Start the bot\n"
+        "/help – Show this help menu\n"
+        "/about – About the bot\n"
+        "/joke – Get a tech joke\n"
+        "/quote – Get motivation\n"
+        "/mood <your mood> – Share your mood\n"
+        "/setname <name> – Set your name\n"
+        "/status – Show your saved name/mood\n"
+        "/remind <minutes> <message> – Set a reminder\n"
+        "/guess – Play a number guessing game\n"
+        "/scoreboard – Show your game score\n"
+        "/praise <optional name> – Get a compliment\n"
+        "/insult <optional name> – Get roasted\n"
+        "/menu – Show inline menu\n"
+        "/keyboard – Show reply keyboard\n"
+        "/feedback <message> – Send feedback\n"
+        "/myname – Change your name with chat\n\n"
+
+        "💬 *Talk to me by typing:*\n"
+        "• say hi\n"
+        "• tell joke\n"
+        "• who created you\n"
+        "• what's your name\n"
+        "• how are you\n"
+        "• what can you do\n"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
 
 # /about command
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,8 +98,10 @@ qa_pairs = {
 async def echo_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text.lower().strip(" ?.!")
 
-    if "say hi" in user_message:
-        await update.message.reply_text("Hello Nathan! 👋")
+    if "hi" in user_message:
+       user_first = update.effective_user.first_name
+       await update.message.reply_text(f"Hello {user_first}! 👋")
+
     elif "tell joke" in user_message:
         await update.message.reply_text("Why did the Python programmer go hungry?\nBecause his food was in a tuple and he couldn’t change it. 😂")
     elif "help" in user_message:
@@ -108,13 +141,6 @@ async def quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Quote:\n\n{random_quote}")
 
 
-qa_pairs = {
-    "who created you": "Nathan built me from scratch, with code and love 💻❤️.",
-    "what's your name": "I’m Nino, your personal AI bot!",
-    "how are you": "Always active and ready to serve! 🤖",
-    "what can you do": "I can chat, joke, motivate, remind, and more. Just ask me!",
-}
-
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -138,17 +164,44 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        delay = int(context.args[0])
-        message = ' '.join(context.args[1:])
-        if not message:
-            await update.message.reply_text("Please give a message after the time.")
-            return
-        await update.message.reply_text(f"⏳ Okay! I’ll remind you in {delay} seconds.")
-        await asyncio.sleep(delay)
-        await update.message.reply_text(f"⏰ Reminder: {message}")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /remind <seconds> <message>")
+    text = update.message.text
+
+    match = re.search(r"in\s*(\d+)\s*(second|seconds|minute|minutes|hour|hours|s|m|h)", text.lower())
+    if not match:
+        await update.message.reply_text("Please use a format like: /remind me in 5 minutes to study.")
+        return
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+
+    if unit.startswith("s"):
+        delay = amount
+    elif unit.startswith("m"):
+        delay = amount * 60
+    elif unit.startswith("h"):
+        delay = amount * 3600
+    else:
+        delay = amount
+
+    msg_match = re.search(r"to (.+)", text.lower())
+    message = msg_match.group(1) if msg_match else "No message provided."
+
+    reminder_time = datetime.now() + timedelta(seconds=delay)
+    reminder_list.append({
+        "time": reminder_time.strftime('%H:%M:%S'),
+        "message": message,
+        "user": update.message.from_user.first_name,
+    })
+
+    await update.message.reply_text(f"⏳ Okay {update.message.from_user.first_name}! I’ll remind you in {amount} {unit}.")
+
+    await asyncio.sleep(delay)
+    await update.message.reply_text(f"⏰ Reminder: {message}")
+
+    # Remove the reminder after sending
+    reminder_list[:] = [r for r in reminder_list if r["message"] != message]
+
+
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data.get("name", "Unknown user")
@@ -316,9 +369,9 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("mood", mood))
     app.add_handler(CommandHandler("quote", quote))
     app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("remind", remind))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("keyboard", keyboard_menu))
-    app.add_handler(CommandHandler("remind", remind))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("setname", setname))
     conv_handler = ConversationHandler(
@@ -342,6 +395,7 @@ if __name__ == '__main__':
     app.add_handler(conv_game)
     app.add_handler(CommandHandler("scoreboard", show_scoreboard))
     app.add_handler(CommandHandler("feedback", feedback))
+    app.add_handler(CommandHandler("remind", remind))
 
 
 
